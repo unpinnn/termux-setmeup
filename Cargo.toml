@@ -1,0 +1,19 @@
+[package]
+name = "termux-setmeup"
+version = "0.0.1"
+edition = "2021"
+description = "Script-first Rust CLI to set up a baseline Termux environment"
+license = "GPL-3.0-only"
+repository = "https://github.com/your-user/termux-setmeup"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

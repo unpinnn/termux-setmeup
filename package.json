@@ -1,0 +1,26 @@
+{
+  "name": "termux-setmeup",
+  "version": "0.0.1",
+  "description": "Termux installer wrapper for termux-setmeup prebuilt .deb",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-user/termux-setmeup.git"
+  },
+  "keywords": [
+    "termux",
+    "android",
+    "setup",
+    "apt",
+    "pkg",
+    "rust"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/npm-postinstall.js"
+  },
+  "files": [
+    "scripts/npm-postinstall.js",
+    "README.md",
+    "LICENSE"
+  ]
+}

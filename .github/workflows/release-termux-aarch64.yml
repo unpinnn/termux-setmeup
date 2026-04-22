@@ -1,0 +1,70 @@
+# Build and publish Termux (aarch64) release artifacts on version tags.
+name: Release Termux AArch64
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Android SDK + NDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build (aarch64-linux-android / arm64-v8a)
+        run: cargo ndk -t arm64-v8a build --release
+
+      - name: Prepare release assets (.tar.gz and .deb)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist pkg/DEBIAN pkg/data/data/com.termux/files/usr/bin
+
+          # Common binary payload
+          cp target/aarch64-linux-android/release/termux-setmeup dist/termux-setmeup
+          chmod +x dist/termux-setmeup
+
+          # Tarball asset
+          tar -C dist -czf termux-setmeup-${GITHUB_REF_NAME}-aarch64-linux-android.tar.gz termux-setmeup
+
+          # Debian package payload for Termux prefix
+          cp dist/termux-setmeup pkg/data/data/com.termux/files/usr/bin/termux-setmeup
+
+          cat > pkg/DEBIAN/control <<EOF
+          Package: termux-setmeup
+          Version: ${VERSION}
+          Architecture: aarch64
+          Maintainer: your-name
+          Installed-Size: 2048
+          Depends: libandroid-support
+          Priority: optional
+          Section: utils
+          Homepage: https://github.com/your-user/termux-setmeup
+          Description: Rust CLI for bootstrapping and maintaining Termux environments
+          EOF
+
+          dpkg-deb --build pkg termux-setmeup_${VERSION}_aarch64.deb
+
+      - name: Publish GitHub Release asset
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            termux-setmeup-${{ github.ref_name }}-aarch64-linux-android.tar.gz
+            termux-setmeup_*_aarch64.deb
+

@@ -1,0 +1,56 @@
+# Publish crate sources to crates.io for version tags after release build succeeds.
+name: Publish Crates.io
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Wait for release workflow
+        uses: ./.github/actions/wait-for-workflow
+        with:
+          github_token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          sha: ${{ github.sha }}
+          workflow_file: release-termux-aarch64.yml
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(awk -F'"' '/^version = "/{print $2; exit}' Cargo.toml)"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match Cargo.toml version ($VERSION)."
+            exit 1
+          fi
+
+      - name: Check if version already exists on crates.io
+        id: exists
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          if curl -fsS "https://crates.io/api/v1/crates/termux-setmeup/${VERSION}" >/dev/null; then
+            echo "Version ${VERSION} already exists on crates.io. Skipping publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to crates.io
+        if: steps.exists.outputs.skip != 'true'
+        run: cargo publish --token "${{ secrets.CRATES_IO_TOKEN }}"
+

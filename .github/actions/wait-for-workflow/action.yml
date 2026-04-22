@@ -1,0 +1,77 @@
+# Composite action that blocks until a target workflow for the same commit finishes.
+name: Wait For Workflow
+description: Wait until another workflow run for the same commit SHA completes successfully.
+
+inputs:
+  github_token:
+    description: GitHub token (usually github.token)
+    required: true
+  repository:
+    description: owner/repo
+    required: true
+  sha:
+    description: Commit SHA to match
+    required: true
+  workflow_file:
+    description: "Workflow filename to wait for (for example: release-termux-aarch64.yml)"
+    required: true
+  timeout_seconds:
+    description: Max time to wait in seconds
+    required: false
+    default: "600"
+  poll_interval_seconds:
+    description: Poll interval in seconds
+    required: false
+    default: "10"
+
+runs:
+  using: composite
+  steps:
+    - name: Wait for target workflow
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPO: ${{ inputs.repository }}
+        SHA: ${{ inputs.sha }}
+        WORKFLOW_FILE: ${{ inputs.workflow_file }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        POLL_INTERVAL_SECONDS: ${{ inputs.poll_interval_seconds }}
+      run: |
+        set -euo pipefail
+
+        echo "Waiting for ${WORKFLOW_FILE} on ${SHA}..."
+        attempts=$(( TIMEOUT_SECONDS / POLL_INTERVAL_SECONDS ))
+        if [ "$attempts" -le 0 ]; then
+          echo "Invalid timeout/poll settings."
+          exit 1
+        fi
+
+        for _ in $(seq 1 "$attempts"); do
+          json="$(curl -fsSL \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?event=push&head_sha=${SHA}&per_page=1")"
+
+          run_count="$(echo "$json" | jq -r '.total_count')"
+          if [ "$run_count" = "0" ]; then
+            sleep "$POLL_INTERVAL_SECONDS"
+            continue
+          fi
+
+          status="$(echo "$json" | jq -r '.workflow_runs[0].status')"
+          conclusion="$(echo "$json" | jq -r '.workflow_runs[0].conclusion')"
+          echo "Target workflow status=${status} conclusion=${conclusion}"
+
+          if [ "$status" = "completed" ]; then
+            if [ "$conclusion" = "success" ]; then
+              exit 0
+            fi
+            echo "Target workflow failed (${conclusion})."
+            exit 1
+          fi
+
+          sleep "$POLL_INTERVAL_SECONDS"
+        done
+
+        echo "Timed out waiting for ${WORKFLOW_FILE}."
+        exit 1
